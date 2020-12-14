@@ -2,7 +2,7 @@
 
 This code is modify from the classical SLAM system [ORB-SLAM2](https://github.com/RuPingCen/ORB_SLAM2), and the code is test on the ubuntu1604 with ROS Kinectic. The processor of platform is I7-4710MQ 16G RAM. The Chinese tutorial can be found [in my blog](https://blog.csdn.net/crp997576280/article/details/104297673).
 
-![image](https://github.com/RuPingCen/DS-SLAM/raw/master/fig/IMG/DS-SLAM-KITTI-05.png)
+![image](https://github.com/RuPingCen/DS-SLAM/raw/master/fig/DS-SLAM-KITTI-05.gif)
 ![image](https://github.com/RuPingCen/DS-SLAM/raw/master/fig/RMSE_and_trackingtime.png)
 
 # Useage
