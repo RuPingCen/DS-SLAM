@@ -1,5 +1,42 @@
 V2.0.0 添加光流跟踪在帧与帧之间的匹配中 加速ORB-SLAM2
 
+LK optical flow algorithm is used to replace the image frame tracking, This system is three times faster than the ORB-SLAM2 algorithm with the same level of accuracy.
+
+# Usage Without ROS
+## Mono Example 
+
+./Examples/Monocular/mono_tum Vocabulary/ORBvoc.txt Examples/Monocular/TUM1.yaml /media/crp/Samsun970CRP/dataSet/TUM/RGBD/rgbd_dataset_freiburg1_desk
+
+./Examples/Monocular/mono_kitti Vocabulary/ORBvoc.txt Examples/Monocular/KITTI00-02.yaml  /media/crp/Samsun970CRP/dataSet/KITTI/sequences/00
+## RGBD Example
+
+./Examples/RGB-D/rgbd_tum Vocabulary/ORBvoc.txt Examples/RGB-D/TUM1.yaml PATH_TO_SEQUENCE_FOLDER ASSOCIATIONS_FILE
+
+example of use the TUM dataset:
+
+./Examples/RGB-D/rgbd_tum Vocabulary/ORBvoc.txt Examples/RGB-D/TUM1.yaml /media/crp/Samsun970CRP/dataSet/TUM/RGBD/rgbd_dataset_freiburg1_room/ /media/crp/Samsun970CRP/dataSet/TUM/RGBD/rgbd_dataset_freiburg1_room/associate.txt
+
+## STEREO Example
+
+./Examples/Stereo/stereo_kitti Vocabulary/ORBvoc.txt Examples/Stereo/KITTI00-02.yaml /media/crp/0FB71B910FB71B91/dataSet/KITTI/sequences/03
+ 
+# Usage with ROS node
+## RGBD example
+
+export ROS_PACKAGE_PATH=${ROS_PACKAGE_PATH}:/home/crp/crp/SLAM/ORB_SLAM2/Examples/ROS
+rosrun ORB_SLAM2 RGBD Vocabulary/ORBvoc.txt Examples/ROS/ORB_SLAM2/TUM1_ROSbag.yaml
+
+rosbag play rgbd_dataset_freiburg1_room.bag
+
+## STEREO example
+
+export ROS_PACKAGE_PATH=${ROS_PACKAGE_PATH}:/home/crp/crp/SLAM/ORB_SLAM2/Examples/ROS
+rosrun ORB_SLAM2 Stereo Vocabulary/ORBvoc.txt Examples/Stereo/KITTI00-02.yaml false
+
+roslaunch publish_image_datasets publish_kitti.launch 
+
+
+
 
 
 V1.0.0 添加了RGBD-双目 单目的ROS接口 发布相机的位姿、轨迹数据到ROS topic

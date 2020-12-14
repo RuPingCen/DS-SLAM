@@ -18,6 +18,8 @@
 * along with ORB-SLAM2. If not, see <http://www.gnu.org/licenses/>.
 */
 #include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include "Viewer.h"
 #include <pangolin/pangolin.h>
 
@@ -144,7 +146,7 @@ void Viewer::Run()
             mpSystem->DeactivateLocalizationMode();
             bLocalizationMode = false;
         }
-
+ 
         d_cam.Activate(s_cam);
         glClearColor(1.0f,1.0f,1.0f,1.0f);
         mpMapDrawer->DrawCurrentCamera(Twc);
@@ -152,6 +154,7 @@ void Viewer::Run()
             mpMapDrawer->DrawKeyFrames(menuShowKeyFrames,menuShowGraph);
         if(menuShowPoints)
             mpMapDrawer->DrawMapPoints();
+
        if(menuShowImage)
 	   {
  			cv::Mat im = mpFrameDrawer->DrawFrame();
@@ -174,6 +177,7 @@ void Viewer::Run()
 		    std::cout<<"save map to disk ...."<< std::endl;
 			menuSaveMap=false;
 		}
+
         if(menuReset)
         {
             menuShowGraph = true;

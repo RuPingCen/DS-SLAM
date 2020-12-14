@@ -25,6 +25,13 @@
 #include<chrono>
 
 #include<ros/ros.h>
+#include <ros/spinner.h>
+#include <sensor_msgs/CameraInfo.h>
+#include <sensor_msgs/Image.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <nav_msgs/Path.h>
+#include <nav_msgs/Odometry.h>
+#include <tf/transform_broadcaster.h>
 #include <cv_bridge/cv_bridge.h>
 #include <message_filters/subscriber.h>
 #include <message_filters/time_synchronizer.h>
@@ -39,8 +46,19 @@ using namespace std;
 class ImageGrabber
 {
 public:
-    ImageGrabber(ORB_SLAM2::System* pSLAM):mpSLAM(pSLAM){}
+    ros::NodeHandle nh;
+	ros::Publisher  pub_rgb,pub_depth,pub_tcw,pub_camerapath,pub_odom;
+    size_t mcounter=0;	 
+	nav_msgs::Path  camerapath;
 
+    ImageGrabber(ORB_SLAM2::System* pSLAM):mpSLAM(pSLAM),nh("~")
+    {
+		pub_rgb= nh.advertise<sensor_msgs::Image> ("RGBImage", 10); 
+		pub_depth= nh.advertise<sensor_msgs::Image> ("DepthImage", 10); 
+		pub_tcw= nh.advertise<geometry_msgs::PoseStamped> ("CameraPose", 10); 
+		pub_odom= nh.advertise<nav_msgs::Odometry> ("Odometry", 10); 
+		pub_camerapath= nh.advertise<nav_msgs::Path> ("Path", 10); 
+    }
     void GrabRGBD(const sensor_msgs::ImageConstPtr& msgRGB,const sensor_msgs::ImageConstPtr& msgD);
 
     ORB_SLAM2::System* mpSLAM;
@@ -109,7 +127,78 @@ void ImageGrabber::GrabRGBD(const sensor_msgs::ImageConstPtr& msgRGB,const senso
         return;
     }
 
-    mpSLAM->TrackRGBD(cv_ptrRGB->image,cv_ptrD->image,cv_ptrRGB->header.stamp.toSec());
+    bool  isKeyFrame =false;
+	cv::Mat Tcw;
+
+    //mpSLAM->TrackRGBD(cv_ptrRGB->image,cv_ptrD->image,cv_ptrRGB->header.stamp.toSec());
+    Tcw = mpSLAM->TrackRGBD(cv_ptrRGB->image,cv_ptrD->image,cv_ptrRGB->header.stamp.toSec(),isKeyFrame);
+
+    if (!Tcw.empty())
+	{
+        cv::Mat Twc =Tcw.inv();
+        cv::Mat RWC= Twc.rowRange(0,3).colRange(0,3);  
+        cv::Mat tWC=  Twc.rowRange(0,3).col(3);
+  
+        Eigen::Matrix<double,3,3> eigMat ;
+        eigMat <<RWC.at<float>(0,0),RWC.at<float>(0,1),RWC.at<float>(0,2),
+                        RWC.at<float>(1,0),RWC.at<float>(1,1),RWC.at<float>(1,2),
+                        RWC.at<float>(2,0),RWC.at<float>(2,1),RWC.at<float>(2,2);
+        Eigen::Quaterniond q(eigMat);
+
+        geometry_msgs::PoseStamped tcw_msg; 					
+        tcw_msg.pose.position.x=tWC.at<float>(0);
+        tcw_msg.pose.position.y=tWC.at<float>(1);			 
+        tcw_msg.pose.position.z=tWC.at<float>(2);
+
+        tcw_msg.pose.orientation.x=q.x();
+        tcw_msg.pose.orientation.y=q.y();
+        tcw_msg.pose.orientation.z=q.z();
+        tcw_msg.pose.orientation.w=q.w();
+
+            
+        std_msgs::Header header ;
+        header.stamp =msgRGB->header.stamp;
+        header.seq = msgRGB->header.seq;
+        header.frame_id="world";
+        
+        sensor_msgs::Image::ConstPtr rgb_msg = msgRGB;
+        sensor_msgs::Image::ConstPtr depth_msg=msgD;
+        
+        //geometry_msgs::PoseStamped tcw_msg; 
+        tcw_msg.header=header;
+        //tf::poseTFToMsg(tf_pose, tcw_msg.pose);
+         
+        // odometry information
+        nav_msgs::Odometry odom_msg;
+        odom_msg.pose.pose.position.x=tWC.at<float>(0);
+        odom_msg.pose.pose.position.y=tWC.at<float>(1);			 
+        odom_msg.pose.pose.position.z=tWC.at<float>(2);
+        
+        odom_msg.pose.pose.orientation.x=q.x();
+        odom_msg.pose.pose.orientation.y=q.y();
+        odom_msg.pose.pose.orientation.z=q.z();
+        odom_msg.pose.pose.orientation.w=q.w();
+        
+        odom_msg.header=header;
+        odom_msg.child_frame_id="base_link"; 
+
+        camerapath.header =header;
+        camerapath.poses.push_back(tcw_msg);     
+        pub_odom.publish(odom_msg);	  
+         
+        pub_camerapath.publish(camerapath);  
+        if( isKeyFrame)
+        {
+            //pose information
+            pub_tcw.publish(tcw_msg);	           
+            pub_rgb.publish(rgb_msg);
+            pub_depth.publish(depth_msg);	
+        }
+	}
+	else
+	{
+	  cout<<"Twc is empty ..."<<endl;
+	}
 }
 
 

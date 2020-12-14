@@ -19,6 +19,9 @@
 */
 
 #include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+ 
 #include<iostream>
 #include<algorithm>
 #include<fstream>
@@ -95,8 +98,9 @@ int main(int argc, char **argv)
 #endif
 
         // Pass the image to the SLAM system
-        SLAM.TrackRGBD(imRGB,imD,tframe);
-
+        //SLAM.TrackRGBD(imRGB,imD,tframe);
+        bool isKeyFrame;
+		SLAM.TrackRGBD(imRGB,imD,tframe,isKeyFrame);
 #ifdef COMPILEDWITHC11
         std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
 #else
@@ -121,6 +125,17 @@ int main(int argc, char **argv)
     // Stop all threads
     SLAM.Shutdown();
 
+    ofstream out_time;
+    out_time.open("trackingtime.txt",ios::out | ios::trunc);
+    if(!out_time.is_open())
+    {
+        cerr<<"trackingtime.txt file not exist"<<endl;
+    }
+    for(size_t ni=0; ni<vTimesTrack.size(); ni++)
+    {
+        out_time<<vTimesTrack[ni]<<"\n";
+    }
+
     // Tracking time statistics
     sort(vTimesTrack.begin(),vTimesTrack.end());
     float totaltime = 0;
@@ -131,6 +146,10 @@ int main(int argc, char **argv)
     cout << "-------" << endl << endl;
     cout << "median tracking time: " << vTimesTrack[nImages/2] << endl;
     cout << "mean tracking time: " << totaltime/nImages << endl;
+    
+    out_time << "median tracking time: " << vTimesTrack[nImages/2] << endl;
+    out_time << "mean tracking time: " << totaltime/nImages << endl;
+    out_time.close();
 
     // Save camera trajectory
     SLAM.SaveTrajectoryTUM("CameraTrajectory.txt");

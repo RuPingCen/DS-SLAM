@@ -19,6 +19,9 @@
 */
 
 #include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+
 #include<iostream>
 #include<algorithm>
 #include<fstream>
@@ -76,7 +79,7 @@ int main(int argc, char **argv)
                  << string(vstrImageLeft[ni]) << endl;
             return 1;
         }
-
+#define  COMPILEDWITHC11 1
 #ifdef COMPILEDWITHC11
         std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
 #else
@@ -84,7 +87,9 @@ int main(int argc, char **argv)
 #endif
 
         // Pass the images to the SLAM system
-        SLAM.TrackStereo(imLeft,imRight,tframe);
+        //SLAM.TrackStereo(imLeft,imRight,tframe);
+		bool isKeyFrame;
+		SLAM.TrackStereo(imLeft,imRight,tframe,isKeyFrame);
 
 #ifdef COMPILEDWITHC11
         std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
@@ -103,10 +108,13 @@ int main(int argc, char **argv)
         else if(ni>0)
             T = tframe-vTimestamps[ni-1];
 
-        //if(ttrack<T)
-        //    usleep((T-ttrack)*1e6);
+//         if(ttrack<T)
+//             usleep((T-ttrack)*1e6);
+		
+// 		cv::imshow("TEST_Left",imLeft);
+// 		cv::waitKey(100);
     }
-
+	 
     // Stop all threads
     SLAM.Shutdown();
 
@@ -114,11 +122,11 @@ int main(int argc, char **argv)
     out_time.open("trackingtime.txt",ios::out | ios::trunc);
     if(!out_time.is_open())
     {
-    cerr<<"trackingtime.txt file not exist"<<endl;
+        cerr<<"trackingtime.txt file not exist"<<endl;
     }
     for(size_t ni=0; ni<vTimesTrack.size(); ni++)
     {
-    out_time<<vTimesTrack[ni]<<"\n";
+        out_time<<vTimesTrack[ni]<<"\n";
     }
 
 
@@ -127,7 +135,7 @@ int main(int argc, char **argv)
     float totaltime = 0;
     for(int ni=0; ni<nImages; ni++)
     {
-    totaltime+=vTimesTrack[ni];
+        totaltime+=vTimesTrack[ni];
     }
     cout << "-------" << endl << endl;
     cout << "median tracking time: " << vTimesTrack[nImages/2] << endl;
@@ -139,7 +147,7 @@ int main(int argc, char **argv)
 
     // Save camera trajectory
     SLAM.SaveTrajectoryKITTI("CameraTrajectory.txt");
-
+ 
     return 0;
 }
 

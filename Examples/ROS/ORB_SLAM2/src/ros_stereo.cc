@@ -17,7 +17,9 @@
 * You should have received a copy of the GNU General Public License
 * along with ORB-SLAM2. If not, see <http://www.gnu.org/licenses/>.
 */
-
+#include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #include<iostream>
 #include<algorithm>
@@ -46,22 +48,24 @@
 
 using namespace std;
 
+vector<float> vTimesTrack;
+
 class ImageGrabber
 {
 public:
-  ros::NodeHandle nh;
- ros::Publisher  pub_rgb,pub_depth,pub_tcw,pub_camerapath,pub_odom;
-   size_t mcounter=0;	 
-    nav_msgs::Path  camerapath;
-    ImageGrabber(ORB_SLAM2::System* pSLAM):mpSLAM(pSLAM),nh("~")
+	ros::NodeHandle nh;
+	ros::Publisher  pub_rgb,pub_depth,pub_tcw,pub_camerapath,pub_odom;
+	size_t mcounter=0;	 
+	nav_msgs::Path  camerapath;
+	ImageGrabber(ORB_SLAM2::System* pSLAM):mpSLAM(pSLAM),nh("~")
 	{
 	      //创建ROS的发布节点
-                  
-                   pub_rgb= nh.advertise<sensor_msgs::Image> ("RGBImage", 10); 
-				   pub_depth= nh.advertise<sensor_msgs::Image> ("DepthImage", 10); 
-				   pub_tcw= nh.advertise<geometry_msgs::PoseStamped> ("CameraPose", 10); 
-				   pub_odom= nh.advertise<nav_msgs::Odometry> ("Odometry", 10); 
-				   pub_camerapath= nh.advertise<nav_msgs::Path> ("Path", 10); 
+           
+		pub_rgb= nh.advertise<sensor_msgs::Image> ("RGBImage", 10); 
+		pub_depth= nh.advertise<sensor_msgs::Image> ("DepthImage", 10); 
+		pub_tcw= nh.advertise<geometry_msgs::PoseStamped> ("CameraPose", 10); 
+		pub_odom= nh.advertise<nav_msgs::Odometry> ("Odometry", 10); 
+		pub_camerapath= nh.advertise<nav_msgs::Path> ("Path", 10); 
 	}
 
     void GrabStereo(const sensor_msgs::Image::ConstPtr msgLeft,const sensor_msgs::Image::ConstPtr msgRight);
@@ -142,6 +146,17 @@ int main(int argc, char **argv)
     // Stop all threads
     SLAM.Shutdown();
 
+    // Tracking time statistics
+    sort(vTimesTrack.begin(),vTimesTrack.end());
+    float totaltime = 0;
+    for(size_t ni=0; ni<vTimesTrack.size(); ni++)
+    {
+        totaltime+=vTimesTrack[ni];
+    }
+    cout << "-------" << endl << endl;
+    cout << "median tracking time: " << vTimesTrack[vTimesTrack.size()/2] << endl;
+    cout << "mean tracking time: " << totaltime/vTimesTrack.size() << endl;
+
     // Save camera trajectory
     SLAM.SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory_TUM_Format.txt");
     SLAM.SaveTrajectoryTUM("FrameTrajectory_TUM_Format.txt");
@@ -192,9 +207,22 @@ void ImageGrabber::GrabStereo(const sensor_msgs::Image::ConstPtr msgLeft,const s
 		Tcw=mpSLAM->TrackStereo(imLeft,imRight,cv_ptrLeft->header.stamp.toSec(),isKeyFrame);
     }
     else
-    {
+    {       
+#ifdef COMPILEDWITHC11
+        std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+#else
+        std::chrono::monotonic_clock::time_point t1 = std::chrono::monotonic_clock::now();
+#endif
         //Tcw=mpSLAM->TrackStereo(cv_ptrLeft->image,cv_ptrRight->image,cv_ptrLeft->header.stamp.toSec());
-		Tcw=mpSLAM->TrackStereo(cv_ptrLeft->image,cv_ptrRight->image,cv_ptrLeft->header.stamp.toSec(),isKeyFrame);
+        Tcw=mpSLAM->TrackStereo(cv_ptrLeft->image,cv_ptrRight->image,cv_ptrLeft->header.stamp.toSec(),isKeyFrame);
+            
+ #ifdef COMPILEDWITHC11
+        std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+#else
+        std::chrono::monotonic_clock::time_point t2 = std::chrono::monotonic_clock::now();
+#endif
+        double ttrack= std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count();
+        vTimesTrack.push_back(ttrack);
     }
  
     if (!Tcw.empty())

@@ -19,6 +19,8 @@
 */
 
 #include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include "Tracking.h"
 
 #include<opencv2/core/core.hpp>
@@ -197,6 +199,7 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft, const cv::Mat &imRe
     }
 
     mCurrentFrame = Frame(mImGray,imGrayRight,timestamp,mpORBextractorLeft,mpORBextractorRight,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth);
+    mCurrentFrame.ExtractORBFeatures(mSensor);  
 
     Track();
 
@@ -204,6 +207,7 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft, const cv::Mat &imRe
 }
 cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft, const cv::Mat &imRectRight, const double &timestamp,bool& isKeyframe)
 {
+
     mImGray = imRectLeft;
     cv::Mat imGrayRight = imRectRight;
 
@@ -233,11 +237,11 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft, const cv::Mat &imRe
             cvtColor(imGrayRight,imGrayRight,CV_BGRA2GRAY);
         }
     }
-
+ 
     mCurrentFrame = Frame(mImGray,imGrayRight,timestamp,mpORBextractorLeft,mpORBextractorRight,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth);
-
+ 
     Track(isKeyframe);
-
+ 
     return mCurrentFrame.mTcw.clone();
 }
 
@@ -265,6 +269,7 @@ cv::Mat Tracking::GrabImageRGBD(const cv::Mat &imRGB,const cv::Mat &imD, const d
         imDepth.convertTo(imDepth,CV_32F,mDepthMapFactor);
 
     mCurrentFrame = Frame(mImGray,imDepth,timestamp,mpORBextractorLeft,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth);
+    mCurrentFrame.ExtractORBFeatures(mSensor);  
 
     Track();
 
@@ -320,15 +325,49 @@ cv::Mat Tracking::GrabImageMonocular(const cv::Mat &im, const double &timestamp)
     }
 
     if(mState==NOT_INITIALIZED || mState==NO_IMAGES_YET)
+    {
         mCurrentFrame = Frame(mImGray,timestamp,mpIniORBextractor,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth);
+    } 
     else
-        mCurrentFrame = Frame(mImGray,timestamp,mpORBextractorLeft,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth);
+    {
+        mCurrentFrame = Frame(mImGray,timestamp,mpORBextractorLeft,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth); 
+    }
+
 
     Track();
 
     return mCurrentFrame.mTcw.clone();
 }
+cv::Mat Tracking::GrabImageMonocular(const cv::Mat &im, const double &timestamp,bool& isKeyframe)
+{
+    mImGray = im;
 
+    if(mImGray.channels()==3)
+    {
+        if(mbRGB)
+            cvtColor(mImGray,mImGray,CV_RGB2GRAY);
+        else
+            cvtColor(mImGray,mImGray,CV_BGR2GRAY);
+    }
+    else if(mImGray.channels()==4)
+    {
+        if(mbRGB)
+            cvtColor(mImGray,mImGray,CV_RGBA2GRAY);
+        else
+            cvtColor(mImGray,mImGray,CV_BGRA2GRAY);
+    }
+
+    if(mState==NOT_INITIALIZED || mState==NO_IMAGES_YET)
+    {
+        mCurrentFrame = Frame(mImGray,timestamp,mpIniORBextractor,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth,mState);
+    } 
+    else
+        mCurrentFrame = Frame(mImGray,timestamp,mpORBextractorLeft,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth,mState);
+  
+    Track(isKeyframe);
+
+    return mCurrentFrame.mTcw.clone();
+}
 void Tracking::Track()
 {
     if(mState==NO_IMAGES_YET)
@@ -583,6 +622,7 @@ void Tracking::Track(bool& isKeyframe)
 
     if(mState==NOT_INITIALIZED)
     {
+		mCurrentFrame.ExtractORBFeatures(mSensor);  
         if(mSensor==System::STEREO || mSensor==System::RGBD)
             StereoInitialization();
         else
@@ -595,9 +635,10 @@ void Tracking::Track(bool& isKeyframe)
     }
     else
     {
+		   
         // System is initialized. Track Frame.
-        bool bOK;
-
+        bool bOK = false;
+		bool bOpticalFlowOK = false;
         // Initial camera pose estimation using motion model or relocalization (if tracking is lost)
         if(!mbOnlyTracking)
         {
@@ -611,24 +652,41 @@ void Tracking::Track(bool& isKeyframe)
 
                 if(mVelocity.empty() || mCurrentFrame.mnId<mnLastRelocFrameId+2)
                 {
+					cout<<"\t Tracking Reference KeyFrame Model ......."<<endl;
+					mCurrentFrame.ExtractORBFeatures(mSensor);  
                     bOK = TrackReferenceKeyFrame();
                 }
                 else
                 {
-                    bOK = TrackWithMotionModel();
-                    if(!bOK)
-                        bOK = TrackReferenceKeyFrame();
+					//mCurrentFrame.ExtractORBFeatures(mSensor); 
+                   //bOK = TrackWithMotionModel();
+				    cout<<"\t Tracking LK Optical Flow Model ......."<<endl;
+					 bOpticalFlowOK = TrackWithLKOpticalFlowModel();
+					if(!bOpticalFlowOK)
+					{	       
+								cout<<"\t OpticalFlow failed  change to MotionModel "<<endl;
+								mCurrentFrame.ExtractORBFeatures(mSensor); 
+								bOK = TrackWithMotionModel();	
+								if(!bOK)
+								{
+									cout<<"\t Tracking LK Optical Flow Failed .    Change to Tracking Reference KeyFrame Model ......."<<endl;
+									bOK = TrackReferenceKeyFrame();
+								}
+					}
+					else 
+						cout<<"\t OpticalFlow OK .... "<<endl;
                 }
             }
             else
             {
+				mCurrentFrame.ExtractORBFeatures(mSensor); 
                 bOK = Relocalization();
             }
         }
         else
         {
             // Localization Mode: Local Mapping is deactivated
-
+		
             if(mState==LOST)
             {
                 bOK = Relocalization();
@@ -703,7 +761,10 @@ void Tracking::Track(bool& isKeyframe)
         if(!mbOnlyTracking)
         {
             if(bOK)
-                bOK = TrackLocalMap();
+			{
+					cout<<"tracking local map ..."<<endl;
+					bOK = TrackLocalMap();
+			}
         }
         else
         {
@@ -714,16 +775,16 @@ void Tracking::Track(bool& isKeyframe)
                 bOK = TrackLocalMap();
         }
 
-        if(bOK)
+        if(bOK || bOpticalFlowOK)
             mState = OK;
         else
             mState=LOST;
-
+			 
         // Update drawer
         mpFrameDrawer->Update(this);
-
+	 
         // If tracking were good, check if we insert a keyframe
-        if(bOK)
+        if(bOK || bOpticalFlowOK)
         {
             // Update motion model
             if(!mLastFrame.mTcw.empty())
@@ -739,35 +800,37 @@ void Tracking::Track(bool& isKeyframe)
             mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);
 
             // Clean VO matches
-            for(int i=0; i<mCurrentFrame.N; i++)
-            {
-                MapPoint* pMP = mCurrentFrame.mvpMapPoints[i];
-                if(pMP)
-                    if(pMP->Observations()<1)
-                    {
-                        mCurrentFrame.mvbOutlier[i] = false;
-                        mCurrentFrame.mvpMapPoints[i]=static_cast<MapPoint*>(NULL);
-                    }
-            }
-
-            // Delete temporal MapPoints
-            for(list<MapPoint*>::iterator lit = mlpTemporalPoints.begin(), lend =  mlpTemporalPoints.end(); lit!=lend; lit++)
-            {
-                MapPoint* pMP = *lit;
-                delete pMP;
-            }
-            mlpTemporalPoints.clear();
-
-            // Check if we need to insert a new keyframe
-            if(NeedNewKeyFrame())
+			if(!bOpticalFlowOK)
 			{
-			 CreateNewKeyFrame();
-			 isKeyframe=true;
-			}
-			else
-			 isKeyframe=false;
-                
+					for(int i=0; i<mCurrentFrame.N; i++)
+					{
+						MapPoint* pMP = mCurrentFrame.mvpMapPoints[i];
+						if(pMP)
+							if(pMP->Observations()<1)
+							{
+								mCurrentFrame.mvbOutlier[i] = false;
+								mCurrentFrame.mvpMapPoints[i]=static_cast<MapPoint*>(NULL);
+							}
+					}
 
+					// Delete temporal MapPoints
+					for(list<MapPoint*>::iterator lit = mlpTemporalPoints.begin(), lend =  mlpTemporalPoints.end(); lit!=lend; lit++)
+					{
+						MapPoint* pMP = *lit;
+						delete pMP;
+					}
+					mlpTemporalPoints.clear();
+
+					// Check if we need to insert a new keyframe
+					if(NeedNewKeyFrame())
+					{
+						cout<<"Create New KeyFrame ..."<<endl;
+						CreateNewKeyFrame();
+						isKeyframe=true;
+					}
+					else
+						isKeyframe=false;
+			}	
 
             // We allow points with high innovation (considererd outliers by the Huber Function)
             // pass to the new keyframe, so that bundle adjustment will finally decide
@@ -790,11 +853,11 @@ void Tracking::Track(bool& isKeyframe)
                 return;
             }
         }
-
+ 
         if(!mCurrentFrame.mpReferenceKF)
             mCurrentFrame.mpReferenceKF = mpReferenceKF;
-
-        mLastFrame = Frame(mCurrentFrame);
+ 
+        mLastFrame = Frame(mCurrentFrame); 
     }
 
     // Store frame pose information to retrieve the complete camera trajectory afterwards.
@@ -814,6 +877,7 @@ void Tracking::Track(bool& isKeyframe)
         mlFrameTimes.push_back(mlFrameTimes.back());
         mlbLost.push_back(mState==LOST);
     }
+ 
 
 }
 
@@ -1174,7 +1238,84 @@ void Tracking::UpdateLastFrame()
             break;
     }
 }
+//////////////////////////////////////////////////////////////////////////////////////
+/**
+ * @brief 对参考关键帧的MapPoints进行跟踪
+ * 
+ * 1. 计算当前帧的词包，将当前帧的特征点分到特定层的nodes上
+ * 2. 对属于同一node的描述子进行匹配
+ * 3. 根据匹配对估计当前帧的姿态
+ * 4. 根据姿态剔除误匹配
+ * @return 如果匹配数大于10，返回true
+ */
+///////////////////////////////////////////////////////////////////////////////////////////
+bool Tracking::TrackWithLKOpticalFlowModel()
+ {
+    int ThPointNum=150;
+  
+     ORBmatcher matcher;
 
+    // Update last frame pose according to its reference keyframe
+    // Create "visual odometry" points if in Localization Mode
+    // 步骤1：使用光流仅更新上一帧的位姿
+    
+    const int tempSensor = mSensor;
+    mSensor = System::MONOCULAR;//设置为单目，只使用左目去跟踪地标点
+    UpdateLastFrame();
+    mSensor = tempSensor;//恢复设置
+    
+    Frame &CurrentFrame = mCurrentFrame;//引用
+    
+    CurrentFrame.SetPose(mVelocity*mLastFrame.mTcw);
+	// fill(mCurrentFrame.mvpMapPoints.begin(),mCurrentFrame.mvpMapPoints.end(),static_cast<MapPoint*>(NULL));
+ 
+    // 步骤2：根据匀速度模型进行对上一帧的MapPoints进行跟踪
+    // 根据上一帧特征点对应的3D点投影的位置缩小特征点匹配范围
+    int nmatches = matcher.SearchByOpticalFlow(CurrentFrame,mLastFrame);
+	// nmatches = matcher.SearchByOpticalFlow(CurrentFrame,mpReferenceKF);
+	
+//     string WindowName = "nmatches: " + std::to_string(nmatches) ;
+//     cv::imshow(WindowName,CurrentFrame.left_img_);
+    if(nmatches<50)
+        return false;
+
+    // Optimize frame pose with all matches
+     // 步骤3：优化位姿
+    Optimizer::PoseOptimization(&CurrentFrame);
+
+    // Discard outliers
+    //int nmatchesMap = 0;
+    for(int i =0; i< CurrentFrame.N; i++)
+    {
+        if( CurrentFrame.mvpMapPoints[i])
+        {
+            if( CurrentFrame.mvbOutlier[i])
+            {
+//                 MapPoint* pMP =  CurrentFrame.mvpMapPoints[i];
+// 
+//                 CurrentFrame.mvpMapPoints[i]=static_cast<MapPoint*>(NULL);
+//                 CurrentFrame.mvbOutlier[i]=false;
+//                 pMP->mbTrackInView = false;//没有在跟踪视野中，不进行局部地图跟踪
+//                 pMP->mnLastFrameSeen = mCurrentFrame.mnId;;//在当前帧帧能匹配到，但是外点，不进行局部地图匹配跟踪
+                nmatches--;//匹配点数
+            }
+//             else if(mCurrentFrame.mvpMapPoints[i]->Observations()>0)//属于地图点
+//                 nmatchesMap++;//匹配的地图点数
+        }
+    }    
+
+//     if(mbOnlyTracking)
+//     {
+//         mbVO = nmatchesMap<10;//匹配的地图点数小于10就是视觉里计
+//         return nmatches>20;
+//     }
+
+   //std::cout<<"内点/外点："<< nmatches<<"/"<< CurrentFrame.mvKeysUn.size() <<" 位姿计算结果:"<< CurrentFrame.mTcw << std::endl;
+
+    return nmatches>=ThPointNum;
+}
+
+ 
 bool Tracking::TrackWithMotionModel()
 {
     ORBmatcher matcher(0.9,true);
@@ -1442,7 +1583,7 @@ void Tracking::CreateNewKeyFrame()
             }
         }
     }
-
+    
     mpLocalMapper->InsertKeyFrame(pKF);
 
     mpLocalMapper->SetNotStop(false);

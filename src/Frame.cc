@@ -49,6 +49,9 @@ Frame::Frame(const Frame &frame)
      mvScaleFactors(frame.mvScaleFactors), mvInvScaleFactors(frame.mvInvScaleFactors),
      mvLevelSigma2(frame.mvLevelSigma2), mvInvLevelSigma2(frame.mvInvLevelSigma2)
 {
+	 mLeftImage=frame.mLeftImage;//.clone();
+   // mRightImage=frame.mRightImage;//右图没用.clone()
+   
     for(int i=0;i<FRAME_GRID_COLS;i++)
         for(int j=0; j<FRAME_GRID_ROWS; j++)
             mGrid[i][j]=frame.mGrid[i][j];
@@ -74,23 +77,23 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
     mvLevelSigma2 = mpORBextractorLeft->GetScaleSigmaSquares();
     mvInvLevelSigma2 = mpORBextractorLeft->GetInverseScaleSigmaSquares();
 
-    // ORB extraction
-    thread threadLeft(&Frame::ExtractORB,this,0,imLeft);
-    thread threadRight(&Frame::ExtractORB,this,1,imRight);
-    threadLeft.join();
-    threadRight.join();
-
-    N = mvKeys.size();
-
-    if(mvKeys.empty())
-        return;
-
-    UndistortKeyPoints();
-
-    ComputeStereoMatches();
-
-    mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(NULL));    
-    mvbOutlier = vector<bool>(N,false);
+//     // ORB extraction
+//     thread threadLeft(&Frame::ExtractORB,this,0,imLeft);
+//     thread threadRight(&Frame::ExtractORB,this,1,imRight);
+//     threadLeft.join();
+//     threadRight.join();
+// 
+//     N = mvKeys.size();
+// 
+//     if(mvKeys.empty())
+//         return;
+// 
+//     UndistortKeyPoints();
+// 
+//     ComputeStereoMatches();
+// 
+//     mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(NULL));    
+//     mvbOutlier = vector<bool>(N,false);
 
 
     // This is done only for the first Frame (or after a change in the calibration)
@@ -113,7 +116,11 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
 
     mb = mbf/fx;
 
-    AssignFeaturesToGrid();
+//     AssignFeaturesToGrid();
+	
+	mLeftImage = imLeft.clone();
+	mRightImage =imRight.clone();
+ 
 }
 
 Frame::Frame(const cv::Mat &imGray, const cv::Mat &imDepth, const double &timeStamp, ORBextractor* extractor,ORBVocabulary* voc, cv::Mat &K, cv::Mat &distCoef, const float &bf, const float &thDepth)
@@ -133,19 +140,19 @@ Frame::Frame(const cv::Mat &imGray, const cv::Mat &imDepth, const double &timeSt
     mvInvLevelSigma2 = mpORBextractorLeft->GetInverseScaleSigmaSquares();
 
     // ORB extraction
-    ExtractORB(0,imGray);
+    // ExtractORB(0,imGray);
 
-    N = mvKeys.size();
+    // N = mvKeys.size();
 
-    if(mvKeys.empty())
-        return;
+    // if(mvKeys.empty())
+    //     return;
 
-    UndistortKeyPoints();
+    // UndistortKeyPoints();
 
-    ComputeStereoFromRGBD(imDepth);
+    // ComputeStereoFromRGBD(imDepth);
 
-    mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(NULL));
-    mvbOutlier = vector<bool>(N,false);
+    // mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(NULL));
+    // mvbOutlier = vector<bool>(N,false);
 
     // This is done only for the first Frame (or after a change in the calibration)
     if(mbInitialComputations)
@@ -167,9 +174,10 @@ Frame::Frame(const cv::Mat &imGray, const cv::Mat &imDepth, const double &timeSt
 
     mb = mbf/fx;
 
-    AssignFeaturesToGrid();
+    //AssignFeaturesToGrid();
+    mLeftImage = imGray.clone();
+	mRightImage =imDepth.clone();
 }
-
 
 Frame::Frame(const cv::Mat &imGray, const double &timeStamp, ORBextractor* extractor,ORBVocabulary* voc, cv::Mat &K, cv::Mat &distCoef, const float &bf, const float &thDepth)
     :mpORBvocabulary(voc),mpORBextractorLeft(extractor),mpORBextractorRight(static_cast<ORBextractor*>(NULL)),
@@ -187,7 +195,8 @@ Frame::Frame(const cv::Mat &imGray, const double &timeStamp, ORBextractor* extra
     mvLevelSigma2 = mpORBextractorLeft->GetScaleSigmaSquares();
     mvInvLevelSigma2 = mpORBextractorLeft->GetInverseScaleSigmaSquares();
 
-    // ORB extraction
+   
+    //ORB extraction
     ExtractORB(0,imGray);
 
     N = mvKeys.size();
@@ -203,6 +212,67 @@ Frame::Frame(const cv::Mat &imGray, const double &timeStamp, ORBextractor* extra
 
     mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(NULL));
     mvbOutlier = vector<bool>(N,false);
+    
+
+    // This is done only for the first Frame (or after a change in the calibration)
+    if(mbInitialComputations)
+    {
+        ComputeImageBounds(imGray);
+
+        mfGridElementWidthInv=static_cast<float>(FRAME_GRID_COLS)/static_cast<float>(mnMaxX-mnMinX);
+        mfGridElementHeightInv=static_cast<float>(FRAME_GRID_ROWS)/static_cast<float>(mnMaxY-mnMinY);
+
+        fx = K.at<float>(0,0);
+        fy = K.at<float>(1,1);
+        cx = K.at<float>(0,2);
+        cy = K.at<float>(1,2);
+        invfx = 1.0f/fx;
+        invfy = 1.0f/fy;
+
+        mbInitialComputations=false;
+    }
+
+    mb = mbf/fx;
+   
+    AssignFeaturesToGrid();
+    
+     
+}
+Frame::Frame(const cv::Mat &imGray, const double &timeStamp, ORBextractor* extractor,ORBVocabulary* voc, cv::Mat &K, cv::Mat &distCoef, const float &bf, const float &thDepth, const int &flag)
+    :mpORBvocabulary(voc),mpORBextractorLeft(extractor),mpORBextractorRight(static_cast<ORBextractor*>(NULL)),
+     mTimeStamp(timeStamp), mK(K.clone()),mDistCoef(distCoef.clone()), mbf(bf), mThDepth(thDepth)
+{
+    // Frame ID
+    mnId=nNextId++;
+
+    // Scale Level Info
+    mnScaleLevels = mpORBextractorLeft->GetLevels();
+    mfScaleFactor = mpORBextractorLeft->GetScaleFactor();
+    mfLogScaleFactor = log(mfScaleFactor);
+    mvScaleFactors = mpORBextractorLeft->GetScaleFactors();
+    mvInvScaleFactors = mpORBextractorLeft->GetInverseScaleFactors();
+    mvLevelSigma2 = mpORBextractorLeft->GetScaleSigmaSquares();
+    mvInvLevelSigma2 = mpORBextractorLeft->GetInverseScaleSigmaSquares();
+
+    if(flag < 2)
+    {
+        //ORB extraction
+        ExtractORB(0,imGray);
+
+        N = mvKeys.size();
+
+        if(mvKeys.empty())
+            return;
+
+        UndistortKeyPoints();
+
+        // Set no stereo information
+        mvuRight = vector<float>(N,-1);
+        mvDepth = vector<float>(N,-1);
+
+        mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(NULL));
+        mvbOutlier = vector<bool>(N,false);
+    }
 
     // This is done only for the first Frame (or after a change in the calibration)
     if(mbInitialComputations)
@@ -224,7 +294,85 @@ Frame::Frame(const cv::Mat &imGray, const double &timeStamp, ORBextractor* extra
 
     mb = mbf/fx;
 
-    AssignFeaturesToGrid();
+    if(flag < 2)
+    { 
+        AssignFeaturesToGrid();
+    }
+     
+}
+
+void Frame::ExtractORBFeatures(const int eSensor)
+{
+	if (eSensor == 0  ) //单目
+	{
+        // ORB extraction
+        ExtractORB(0,mLeftImage);
+
+        N = mvKeys.size();
+
+        if(mvKeys.empty())
+            return;
+
+        UndistortKeyPoints();
+
+        // Set no stereo information
+        mvuRight = vector<float>(N,-1);
+        mvDepth = vector<float>(N,-1);
+
+        mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(NULL));
+        mvbOutlier = vector<bool>(N,false);
+
+        AssignFeaturesToGrid();
+	}
+    else if (eSensor == 1  ) //双相机情况
+    {
+        thread threadLeft(&Frame::ExtractORB,this,0,mLeftImage);
+        thread threadRight(&Frame::ExtractORB,this,1,mRightImage);
+        threadLeft.join();
+        threadRight.join();
+
+        N = mvKeys.size();
+        mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(NULL));    
+        mvbOutlier = vector<bool>(N,false);
+        
+        if(mvKeys.empty())
+        {
+        cout<<"features extract failed ..."<<endl;
+            return;
+        }
+
+        UndistortKeyPoints();
+        //这个函数左右目匹配的时候也是用的了特征点描述子的距离匹配
+        ComputeStereoMatches();
+
+        AssignFeaturesToGrid();
+        
+        cout<<"extract ORB features ..."<<endl;
+    }
+    else if (eSensor == 2 ) //RGBD
+    {
+	    // ORB extractionn
+	    ExtractORB(0,mLeftImage);
+
+	    N = mvKeys.size();
+
+	    if(mvKeys.empty())
+	    {
+		cout<<"features extract failed ..."<<endl;
+	      	return;
+	    }
+
+
+	    UndistortKeyPoints();
+
+	    ComputeStereoFromRGBD(mRightImage);
+
+	    mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(NULL));
+	    mvbOutlier = vector<bool>(N,false);
+
+	    AssignFeaturesToGrid();
+    }
+    else ; 
 }
 
 void Frame::AssignFeaturesToGrid()
